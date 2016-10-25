@@ -37,15 +37,17 @@ public:
   std::string clipid;  // ID for the clip path
   double clipx0, clipx1, clipy0, clipy1;  // Save the previous clip path to avoid duplication
   bool standalone;
+  bool styleAsAttr;
   Rcpp::List system_aliases;
   Rcpp::List user_aliases;
   XPtrCairoContext cc;
 
-  SVGDesc(SvgStreamPtr stream_, bool standalone_, Rcpp::List aliases_):
+  SVGDesc(SvgStreamPtr stream_, bool standalone_, bool styleAsAttr_, Rcpp::List aliases_):
       stream(stream_),
       pageno(0),
       clipx0(0), clipx1(0), clipy0(0), clipy1(0),
       standalone(standalone_),
+      styleAsAttr(styleAsAttr_),
       system_aliases(Rcpp::wrap(aliases_["system"])),
       user_aliases(Rcpp::wrap(aliases_["user"])),
       cc(gdtools::context_create()) {
@@ -173,48 +175,79 @@ inline void write_attr_clip(SvgStreamPtr stream, std::string clipid) {
 }
 
 // Beginning of writing style attributes
-inline void write_style_begin(SvgStreamPtr stream) {
-  (*stream) << " style='";
+inline void write_style_begin(SvgStreamPtr stream, bool styleAsAttr) {
+  if(!styleAsAttr){
+    (*stream) << " style='";
+  }else{
+    (*stream) << " ";
+  }
 }
 
 // End of writing style attributes
-inline void write_style_end(SvgStreamPtr stream) {
-  (*stream) << "'";
+inline void write_style_end(SvgStreamPtr stream, bool styleAsAttr) {
+  if(!styleAsAttr){
+    (*stream) << "'";
+  }else{
+    (*stream) << " ";
+  }
 }
 
 // Writing style attributes related to colors
-inline void write_style_col(SvgStreamPtr stream, const char* attr, int col, bool first = false) {
+inline void write_style_col(SvgStreamPtr stream, const char* attr, int col, bool styleAsAttr, bool first = false) {
   int alpha = R_ALPHA(col);
 
   if(!first)  (*stream) << ' ';
 
   if (alpha == 0) {
-    (*stream) << attr << ": none;";
+    if(!styleAsAttr){
+      (*stream) << attr << ": none;";
+    }else{
+      (*stream) << attr << "=\"none\"";
+    }
     return;
   } else {
-    (*stream) << tfm::format("%s: #%02X%02X%02X;", attr, R_RED(col), R_GREEN(col), R_BLUE(col));
-    if (alpha != 255)
-      (*stream) << ' ' << attr << "-opacity: " << alpha / 255.0 << ';';
+    if(!styleAsAttr){
+      (*stream) << tfm::format("%s: #%02X%02X%02X;", attr, R_RED(col), R_GREEN(col), R_BLUE(col));
+      if (alpha != 255)
+	(*stream) << ' ' << attr << "-opacity=\"" << alpha / 255.0 << '"';
+    }else{
+      (*stream) << tfm::format("%s=\"#%02X%02X%02X\" ", attr, R_RED(col), R_GREEN(col), R_BLUE(col));
+      if (alpha != 255)
+	(*stream) << ' ' << attr << "-opacity=\"" << alpha / 255.0 << '"';
+    }
   }
 }
 
 // Writing style attributes whose values are double type
-inline void write_style_dbl(SvgStreamPtr stream, const char* attr, double value, bool first = false) {
+inline void write_style_dbl(SvgStreamPtr stream, const char* attr, double value, bool styleAsAttr, bool first = false) {
+  
   if(!first)  (*stream) << ' ';
-  (*stream) << attr << ": " << value << ';';
+     if(!styleAsAttr){
+       (*stream) << attr << ": " << value << ';';
+     }else{
+       (*stream) << attr << "=\"" << value << '"';
+     }
 }
 
-inline void write_style_fontsize(SvgStreamPtr stream, double value, bool first = false) {
+inline void write_style_fontsize(SvgStreamPtr stream, double value, bool styleAsAttr, bool first = false) {
   if(!first) (*stream) << ' ';
   // Firefox requires that we provide a unit (even though px is
   // redundant here)
-  (*stream) << "font-size: " << value << "px;";
+  if(!styleAsAttr){
+    (*stream) << "font-size: " << value << "px;";
+  }else{
+    (*stream) << "font-size=\"" << value << "px\" ";
+  }
 }
 
 // Writing style attributes whose values are strings
-inline void write_style_str(SvgStreamPtr stream, const char* attr, const char* value, bool first = false) {
+inline void write_style_str(SvgStreamPtr stream, const char* attr, const char* value, bool styleAsAttr = false, bool first = false) {
   if(!first)  (*stream) << ' ';
-  (*stream) << attr << ": " << value << ';';
+   if(!styleAsAttr){
+     (*stream) << attr << ": " << value << ';';
+   }else{
+     (*stream) << attr << "=\"" << value << "\" ";
+   }
 }
 
 inline double scale_lty(int lty, double lwd) {
@@ -224,16 +257,19 @@ inline double scale_lty(int lty, double lwd) {
 }
 
 // Writing style attributes related to line types
-inline void write_style_linetype(SvgStreamPtr stream, const pGEcontext gc, bool first = false) {
+inline void write_style_linetype(SvgStreamPtr stream, const pGEcontext gc, bool styleAsAttr = false, bool first = false) {
   int lty = gc->lty;
 
   // 1 lwd = 1/96", but units in rest of document are 1/72"
-  write_style_dbl(stream, "stroke-width", gc->lwd / 96.0 * 72, first);
+  write_style_dbl(stream, "stroke-width", gc->lwd / 96.0 * 72,styleAsAttr, first);
 
   // Default is "stroke: #000000;" as declared in <style>
+if(!styleAsAttr){
   if (!is_black(gc->col))
-    write_style_col(stream, "stroke", gc->col);
-
+    write_style_col(stream, "stroke", gc->col,false);
+ }else{
+write_style_col(stream, "stroke", gc->col,true);
+}
   // Set line pattern type
   switch (lty) {
   case LTY_BLANK: // never called: blank lines never get to this point
@@ -251,7 +287,7 @@ inline void write_style_linetype(SvgStreamPtr stream, const pGEcontext gc, bool 
       (*stream) << ',' << scale_lty(lty, gc->lwd);
       lty = lty >> 4;
     }
-    stream->put(';');
+    if(styleAsAttr){stream->put(';');}else{stream->put(' ');};
     break;
   }
 
@@ -261,10 +297,10 @@ inline void write_style_linetype(SvgStreamPtr stream, const pGEcontext gc, bool 
   case GE_ROUND_CAP: // declared to be default in <style>
     break;
   case GE_BUTT_CAP:
-    write_style_str(stream, "stroke-linecap", "butt");
+    write_style_str(stream, "stroke-linecap", "butt",styleAsAttr);
     break;
   case GE_SQUARE_CAP:
-    write_style_str(stream, "stroke-linecap", "square");
+    write_style_str(stream, "stroke-linecap", "square",styleAsAttr);
     break;
   default:
     break;
@@ -276,12 +312,12 @@ inline void write_style_linetype(SvgStreamPtr stream, const pGEcontext gc, bool 
   case GE_ROUND_JOIN: // declared to be default in <style>
     break;
   case GE_BEVEL_JOIN:
-    write_style_str(stream, "stroke-linejoin", "bevel");
+    write_style_str(stream, "stroke-linejoin", "bevel",styleAsAttr);
     break;
   case GE_MITRE_JOIN:
-    write_style_str(stream, "stroke-linejoin", "miter");
+    write_style_str(stream, "stroke-linejoin", "miter",styleAsAttr);
     if (std::abs(gc->lmitre - 10.0) > 1e-3) // 10 is declared to be the default in <style>
-      write_style_dbl(stream, "stroke-miterlimit", gc->lmitre);
+      write_style_dbl(stream, "stroke-miterlimit", gc->lmitre,styleAsAttr);
     break;
   default:
     break;
@@ -307,6 +343,7 @@ void svg_metric_info(int c, const pGEcontext gc, double* ascent,
   std::string file = fontfile(gc->fontfamily, gc->fontface, svgd->user_aliases);
   std::string name = fontname(gc->fontfamily, gc->fontface, svgd->system_aliases, svgd->user_aliases);
   gdtools::context_set_font(svgd->cc, name, gc->cex * gc->ps, is_bold(gc->fontface), is_italic(gc->fontface), file);
+  //gdtools::context_set_font(svgd->cc, name, gc->cex * gc->ps, is_bold(gc->fontface), is_italic(gc->fontface));
   FontMetric fm = gdtools::context_extents(svgd->cc, std::string(str));
 
   *ascent = fm.ascent;
@@ -348,6 +385,7 @@ void svg_new_page(const pGEcontext gc, pDevDesc dd) {
 BEGIN_RCPP
 
   SVGDesc *svgd = (SVGDesc*) dd->deviceSpecific;
+ bool styleAsAttr = svgd->styleAsAttr;
   SvgStreamPtr stream = svgd->stream;
 
   if (svgd->pageno > 0) {
@@ -386,20 +424,20 @@ BEGIN_RCPP
   (*stream) << "</defs>\n";
 
   (*stream) << "<rect width='100%' height='100%'";
-  write_style_begin(stream);
-  write_style_str(stream, "stroke", "none", true);
+  write_style_begin(stream,styleAsAttr);
+  write_style_str(stream, "stroke", "none",styleAsAttr, true);
   if (is_filled(gc->fill))
-    write_style_col(stream, "fill", gc->fill);
+    write_style_col(stream, "fill", gc->fill,styleAsAttr);
   else
-    write_style_col(stream, "fill", dd->startfill);
-  write_style_end(stream);
+    write_style_col(stream, "fill", dd->startfill,styleAsAttr);
+  write_style_end(stream,styleAsAttr);
   (*stream) << "/>\n";
 
   svgd->stream->flush();
   svgd->pageno++;
 
 VOID_END_RCPP
-}
+  }
 
 void svg_close(pDevDesc dd) {
   SVGDesc *svgd = (SVGDesc*) dd->deviceSpecific;
@@ -410,14 +448,15 @@ void svg_close(pDevDesc dd) {
 void svg_line(double x1, double y1, double x2, double y2,
               const pGEcontext gc, pDevDesc dd) {
   SVGDesc *svgd = (SVGDesc*) dd->deviceSpecific;
+  bool styleAsAttr = svgd->styleAsAttr;
   SvgStreamPtr stream = svgd->stream;
 
   (*stream) << "<line x1='" << x1 << "' y1='" << y1 << "' x2='" <<
     x2 << "' y2='" << y2 << '\'';
 
-  write_style_begin(stream);
-  write_style_linetype(stream, gc, true);
-  write_style_end(stream);
+  write_style_begin(stream,styleAsAttr);
+  write_style_linetype(stream, gc,styleAsAttr, true);
+  write_style_end(stream,styleAsAttr);
 
   write_attr_clip(stream, svgd->clipid);
 
@@ -429,6 +468,7 @@ void svg_poly(int n, double *x, double *y, int filled, const pGEcontext gc,
               pDevDesc dd) {
 
   SVGDesc *svgd = (SVGDesc*) dd->deviceSpecific;
+  bool styleAsAttr = svgd->styleAsAttr;
   SvgStreamPtr stream = svgd->stream;
 
   (*stream) << "<polyline points='";
@@ -438,11 +478,11 @@ void svg_poly(int n, double *x, double *y, int filled, const pGEcontext gc,
   }
   stream->put('\'');
 
-  write_style_begin(stream);
-  write_style_linetype(stream, gc, true);
+  write_style_begin(stream,styleAsAttr);
+  write_style_linetype(stream, gc,styleAsAttr, true);
   if (filled)
-    write_style_col(stream, "fill", gc->fill);
-  write_style_end(stream);
+    write_style_col(stream, "fill", gc->fill,styleAsAttr);
+  write_style_end(stream,styleAsAttr);
 
   write_attr_clip(stream, svgd->clipid);
 
@@ -465,6 +505,7 @@ void svg_path(double *x, double *y,
               Rboolean winding,
               const pGEcontext gc, pDevDesc dd) {
   SVGDesc *svgd = (SVGDesc*) dd->deviceSpecific;
+  bool styleAsAttr = svgd->styleAsAttr;
   SvgStreamPtr stream = svgd->stream;
 
   // Create path data
@@ -485,13 +526,13 @@ void svg_path(double *x, double *y,
   // Finish path data
   stream->put('\'');
 
-  write_style_begin(stream);
+  write_style_begin(stream,styleAsAttr);
   // Specify fill rule
-  write_style_str(stream, "fill-rule", winding ? "nonzero" : "evenodd", true);
+  write_style_str(stream, "fill-rule", winding ? "nonzero" : "evenodd",styleAsAttr, true);
   if (is_filled(gc->fill))
-    write_style_col(stream, "fill", gc->fill);
-  write_style_linetype(stream, gc);
-  write_style_end(stream);
+    write_style_col(stream, "fill", gc->fill,styleAsAttr);
+  write_style_linetype(stream, gc,styleAsAttr);
+  write_style_end(stream,styleAsAttr);
 
   write_attr_clip(stream, svgd->clipid);
 
@@ -513,17 +554,18 @@ double svg_strwidth(const char *str, const pGEcontext gc, pDevDesc dd) {
 void svg_rect(double x0, double y0, double x1, double y1,
               const pGEcontext gc, pDevDesc dd) {
   SVGDesc *svgd = (SVGDesc*) dd->deviceSpecific;
+  bool styleAsAttr = svgd->styleAsAttr;
   SvgStreamPtr stream = svgd->stream;
 
   // x and y give top-left position
   (*stream) << "<rect x='" << fmin(x0, x1) << "' y='" << fmin(y0, y1) <<
     "' width='" << fabs(x1 - x0) << "' height='" << fabs(y1 - y0) << '\'';
 
-  write_style_begin(stream);
-  write_style_linetype(stream, gc, true);
+  write_style_begin(stream,styleAsAttr);
+  write_style_linetype(stream, gc,styleAsAttr, true);
   if (is_filled(gc->fill))
-    write_style_col(stream, "fill", gc->fill);
-  write_style_end(stream);
+    write_style_col(stream, "fill", gc->fill,styleAsAttr);
+  write_style_end(stream,styleAsAttr);
 
   write_attr_clip(stream, svgd->clipid);
 
@@ -534,15 +576,16 @@ void svg_rect(double x0, double y0, double x1, double y1,
 void svg_circle(double x, double y, double r, const pGEcontext gc,
                        pDevDesc dd) {
   SVGDesc *svgd = (SVGDesc*) dd->deviceSpecific;
+  bool styleAsAttr = svgd->styleAsAttr;
   SvgStreamPtr stream = svgd->stream;
 
   (*stream) << "<circle cx='" << x << "' cy='" << y << "' r='" << r << "pt'";
 
-  write_style_begin(stream);
-  write_style_linetype(stream, gc, true);
+  write_style_begin(stream,styleAsAttr);
+  write_style_linetype(stream, gc,styleAsAttr, true);
   if (is_filled(gc->fill))
-    write_style_col(stream, "fill", gc->fill);
-  write_style_end(stream);
+    write_style_col(stream, "fill", gc->fill,styleAsAttr);
+  write_style_end(stream,styleAsAttr);
 
   write_attr_clip(stream, svgd->clipid);
 
@@ -553,6 +596,7 @@ void svg_circle(double x, double y, double r, const pGEcontext gc,
 void svg_text(double x, double y, const char *str, double rot,
               double hadj, const pGEcontext gc, pDevDesc dd) {
   SVGDesc *svgd = (SVGDesc*) dd->deviceSpecific;
+  bool styleAsAttr = svgd->styleAsAttr;
   SvgStreamPtr stream = svgd->stream;
 
   // If we specify the clip path inside <text>, the "transform" also
@@ -575,18 +619,18 @@ void svg_text(double x, double y, const char *str, double rot,
 
   double fontsize = gc->cex * gc->ps;
 
-  write_style_begin(stream);
-  write_style_fontsize(stream, fontsize, true);
+  write_style_begin(stream,styleAsAttr);
+  write_style_fontsize(stream, fontsize,styleAsAttr, true);
   if (is_bold(gc->fontface))
-    write_style_str(stream, "font-weight", "bold");
+    write_style_str(stream, "font-weight", "bold",styleAsAttr);
   if (is_italic(gc->fontface))
-    write_style_str(stream, "font-style", "italic");
+    write_style_str(stream, "font-style", "italic",styleAsAttr);
   if (!is_black(gc->col))
-    write_style_col(stream, "fill", gc->col);
+    write_style_col(stream, "fill", gc->col,styleAsAttr);
 
   std::string font = fontname(gc->fontfamily, gc->fontface, svgd->system_aliases, svgd->user_aliases);
-  write_style_str(stream, "font-family", font.c_str());
-  write_style_end(stream);
+  write_style_str(stream, "font-family", font.c_str(),styleAsAttr);
+  write_style_end(stream,styleAsAttr);
 
   std::string file = fontfile(gc->fontfamily, gc->fontface, svgd->user_aliases);
   gdtools::context_set_font(svgd->cc, font, fontsize, is_bold(gc->fontface), is_italic(gc->fontface), file);
@@ -665,7 +709,7 @@ void svg_raster(unsigned int *raster, int w, int h,
 
 pDevDesc svg_driver_new(SvgStreamPtr stream, int bg, double width,
                         double height, double pointsize,
-                        bool standalone, Rcpp::List& aliases) {
+                        bool standalone, bool styleAsAttr, Rcpp::List& aliases) {
 
   pDevDesc dd = (DevDesc*) calloc(1, sizeof(DevDesc));
   if (dd == NULL)
@@ -730,12 +774,12 @@ pDevDesc svg_driver_new(SvgStreamPtr stream, int bg, double width,
   dd->haveTransparency = 2;
   dd->haveTransparentBg = 2;
 
-  dd->deviceSpecific = new SVGDesc(stream, standalone, aliases);
+  dd->deviceSpecific = new SVGDesc(stream, standalone,styleAsAttr, aliases);
   return dd;
 }
 
 void makeDevice(SvgStreamPtr stream, std::string bg_, double width, double height,
-                double pointsize, bool standalone, Rcpp::List& aliases) {
+                double pointsize, bool standalone, bool styleAsAttr, Rcpp::List& aliases) {
 
   int bg = R_GE_str2col(bg_.c_str());
 
@@ -743,7 +787,7 @@ void makeDevice(SvgStreamPtr stream, std::string bg_, double width, double heigh
   R_CheckDeviceAvailable();
   BEGIN_SUSPEND_INTERRUPTS {
     pDevDesc dev = svg_driver_new(stream, bg, width, height, pointsize,
-                                  standalone, aliases);
+                                  standalone,styleAsAttr, aliases);
     if (dev == NULL)
       Rcpp::stop("Failed to start SVG device");
 
@@ -756,10 +800,10 @@ void makeDevice(SvgStreamPtr stream, std::string bg_, double width, double heigh
 
 // [[Rcpp::export]]
 bool svglite_(std::string file, std::string bg, double width, double height,
-              double pointsize, bool standalone, Rcpp::List aliases) {
+              double pointsize, bool standalone, bool styleAsAttr, Rcpp::List aliases) {
 
   SvgStreamPtr stream(new SvgStreamFile(file));
-  makeDevice(stream, bg, width, height, pointsize, standalone, aliases);
+  makeDevice(stream, bg, width, height, pointsize, standalone,styleAsAttr, aliases);
 
   return true;
 }
@@ -767,10 +811,10 @@ bool svglite_(std::string file, std::string bg, double width, double height,
 // [[Rcpp::export]]
 Rcpp::XPtr<std::stringstream> svgstring_(Rcpp::Environment env, std::string bg,
                                          double width, double height, double pointsize,
-                                         bool standalone, Rcpp::List aliases) {
+                                         bool standalone, bool styleAsAttr, Rcpp::List aliases) {
 
   SvgStreamPtr stream(new SvgStreamString(env));
-  makeDevice(stream, bg, width, height, pointsize, standalone, aliases);
+  makeDevice(stream, bg, width, height, pointsize, standalone,styleAsAttr, aliases);
 
   SvgStreamString* strstream = static_cast<SvgStreamString*>(stream.get());
 
