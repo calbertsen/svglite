@@ -25,6 +25,7 @@
 #include <R_ext/GraphicsEngine.h>
 
 #include "SvgStream.h"
+#include "utils.h"
 
 typedef boost::shared_ptr<SvgStream> SvgStreamPtr;
 
@@ -331,10 +332,16 @@ void svg_metric_info(int c, const pGEcontext gc, double* ascent,
                      double* descent, double* width, pDevDesc dd) {
   SVGDesc *svgd = (SVGDesc*) dd->deviceSpecific;
 
+  bool is_unicode = mbcslocale;
+  if (c < 0) {
+    is_unicode = true;
+    c = -c;
+  }
+
   // Convert to string - negative implies unicode code point
   char str[16];
-  if (c < 0) {
-    Rf_ucstoutf8(str, (unsigned int) -c);
+  if (is_unicode) {
+    Rf_ucstoutf8(str, (unsigned int) c);
   } else {
     str[0] = (char) c;
     str[1] = '\0';
@@ -363,7 +370,9 @@ void svg_clip(double x0, double x1, double y0, double y1, pDevDesc dd) {
     return;
 
   std::ostringstream s;
-  s << x0 << "|" << x1 << "|" << y0 << "|" << y1;
+  s << std::fixed << std::setprecision(2);
+  s << dbl_format(x0) << "|" << dbl_format(x1) << "|" <<
+       dbl_format(y0) << "|" << dbl_format(y1);
   std::string clipid = gdtools::base64_string_encode(s.str());
 
   svgd->clipid = clipid;
@@ -413,7 +422,7 @@ BEGIN_RCPP
   // Setting default styles
   (*stream) << "<defs>\n";
   (*stream) << "  <style type='text/css'><![CDATA[\n";
-  (*stream) << "    line, polyline, path, rect, circle {\n";
+  (*stream) << "    line, polyline, polygon, path, rect, circle {\n";
   (*stream) << "      fill: none;\n";
   (*stream) << "      stroke: #000000;\n";
   (*stream) << "      stroke-linecap: round;\n";
@@ -465,13 +474,13 @@ void svg_line(double x1, double y1, double x2, double y2,
 }
 
 void svg_poly(int n, double *x, double *y, int filled, const pGEcontext gc,
-              pDevDesc dd) {
+              pDevDesc dd, const char* node_name) {
 
   SVGDesc *svgd = (SVGDesc*) dd->deviceSpecific;
   bool styleAsAttr = svgd->styleAsAttr;
   SvgStreamPtr stream = svgd->stream;
 
-  (*stream) << "<polyline points='";
+  (*stream) << "<" << node_name << " points='";
 
   for (int i = 0; i < n; i++) {
     (*stream) << x[i] << ',' << y[i] << ' ';
@@ -493,11 +502,11 @@ void svg_poly(int n, double *x, double *y, int filled, const pGEcontext gc,
 
 void svg_polyline(int n, double *x, double *y, const pGEcontext gc,
                   pDevDesc dd) {
-  svg_poly(n, x, y, 0, gc, dd);
+  svg_poly(n, x, y, 0, gc, dd, "polyline");
 }
 void svg_polygon(int n, double *x, double *y, const pGEcontext gc,
                  pDevDesc dd) {
-  svg_poly(n, x, y, 1, gc, dd);
+  svg_poly(n, x, y, 1, gc, dd, "polygon");
 }
 
 void svg_path(double *x, double *y,

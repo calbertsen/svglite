@@ -24,7 +24,8 @@ test_that("metrics are computed for different weight/style", {
 })
 
 test_that("symbol font family is 'Symbol'", {
-  matched_symbol_font <- gdtools::match_family("symbol")
+  symbol_font <- alias_lookup()["symbol"]
+  matched_symbol_font <- gdtools::match_family(symbol_font)
 
   x <- xmlSVG({
     plot(c(0,2), c(0,2), type = "n", axes = FALSE, xlab = "", ylab = "")
@@ -70,4 +71,15 @@ test_that("metrics are computed for different fonts", {
 
   expect_false(x_attr[[1]] == x_attr[[2]])
   expect_false(y_attr[[1]] == y_attr[[2]])
+})
+
+test_that("unicode characters in plotmath are handled", {
+  x <- xmlSVG({
+    plot.new()
+    text(0.5, 0.5, expression(ρ * ρ))
+  })
+  text <- xml_find_all(x, ".//text")
+  x_attr <- as.double(xml_attr(text, "x"))
+
+  expect_true(x_attr[2] - x_attr[1] > 0)
 })

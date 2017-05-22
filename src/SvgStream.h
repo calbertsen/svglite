@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <Rcpp.h>
+#include "utils.h"
 
 class SvgStream {
   public:
@@ -29,6 +30,13 @@ SvgStream& operator<<(SvgStream& object, const T& data) {
   object.write(data);
   return object;
 }
+template <>
+SvgStream& operator<<(SvgStream& object, const double& data) {
+  // Make sure negative zeros are converted to positive zero for
+  // reproducibility of SVGs
+  object.write(dbl_format(data));
+  return object;
+}
 
 class SvgStreamFile : public SvgStream {
   std::ofstream stream_;
@@ -49,13 +57,18 @@ public:
   void write(char data)           { stream_ << data; }
   void write(const std::string& data) { stream_ << data; }
 
+  // Adding a final newline here creates problems on Windows when
+  // seeking back to original position. So we only write the newline
+  // in finish()
   void flush() {
-    stream_ << "</svg>\n";
-    stream_.seekp(-7, std::ios_base::cur);
+    stream_ << "</svg>";
+    stream_.seekp(-6, std::ios_base::cur);
     stream_.flush();
   }
 
   void finish() {
+    stream_ << "</svg>\n";
+    stream_.flush();
   }
 
   ~SvgStreamFile() {
