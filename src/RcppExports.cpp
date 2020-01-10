@@ -54,8 +54,8 @@ END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_svglite_svglite_", (DL_FUNC) &_svglite_svglite_, 7},
-    {"_svglite_svgstring_", (DL_FUNC) &_svglite_svgstring_, 7},
+    {"_svglite_svglite_", (DL_FUNC) &_svglite_svglite_, 8},
+    {"_svglite_svgstring_", (DL_FUNC) &_svglite_svgstring_, 8},
     {"_svglite_get_svg_content", (DL_FUNC) &_svglite_get_svg_content, 1},
     {NULL, NULL, 0}
 };
