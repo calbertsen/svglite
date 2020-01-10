@@ -7,6 +7,7 @@ svglite_ <- function(file, bg, width, height, pointsize, standalone,style_as_att
 
 svgstring_ <- function(env, bg, width, height, pointsize, standalone,style_as_attr, aliases) {
     .Call('_svglite_svgstring_', PACKAGE = 'svglite', env, bg, width, height, pointsize, standalone,style_as_attr, aliases)
+}
 
 get_svg_content <- function(p) {
     .Call('_svglite_get_svg_content', PACKAGE = 'svglite', p)
