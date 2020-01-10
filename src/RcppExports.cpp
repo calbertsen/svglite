@@ -6,7 +6,7 @@
 using namespace Rcpp;
 
 // svglite_
-bool _svglite_(std::string file, std::string bg, double width, double height, double pointsize, bool standalone, bool styleAsAttr, Rcpp::List aliases);
+bool svglite_(std::string file, std::string bg, double width, double height, double pointsize, bool standalone, bool styleAsAttr, Rcpp::List aliases);
 RcppExport SEXP _svglite_svglite_(SEXP fileSEXP, SEXP bgSEXP, SEXP widthSEXP, SEXP heightSEXP, SEXP pointsizeSEXP, SEXP standaloneSEXP, SEXP styleAsAttrSEXP, SEXP aliasesSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
